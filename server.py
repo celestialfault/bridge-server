@@ -45,9 +45,7 @@ async def bot_websocket(ws: WebSocket, bot_key: str):
 async def websocket(ws: WebSocket, username: str, key: str):
     user = await get_user_from_key(key)
     if not user:
-        print("Blocking attempted connection with invalid key")
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-    print(f"Connection opened from {username}")
 
     await manager.connect(ws)
     try:
