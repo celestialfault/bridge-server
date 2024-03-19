@@ -20,7 +20,7 @@ class Tokens(commands.Cog):
             token = uuid4()
 
         if not await User.find_one({"user_id": ctx.author.id}).exists():
-            await User.insert_one(User(user_id=ctx.author.id, key=token))
+            await User.insert_one(User(user_id=ctx.author.id, key=str(token)))
         else:
             await User.find_one({"user_id": ctx.author.id}).update({"$set": {"key": str(token)}})
         await ctx.send(f"Your new key is `{token}`", ephemeral=True)
