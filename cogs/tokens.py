@@ -15,6 +15,10 @@ class Tokens(commands.Cog):
         """Create a new API key for use with the bridge mod"""
         await ctx.defer(ephemeral=True)
         token = uuid4()
+        # its a UUID, and the scale of this isn't intended to be very high, but still...
+        while await User.find_one({"key": token}).exists():
+            token = uuid4()
+
         if not await User.find_one({"user_id": ctx.author.id}).exists():
             await User.insert_one(User(user_id=ctx.author.id, key=token))
         else:
