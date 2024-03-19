@@ -106,7 +106,11 @@ class Bridge(commands.Cog):
                     continue
 
                 await self.channel.send(
-                    f"**{data['author']}**: {data['message']}",
+                    (
+                        f"**{data['author']}**: {data['message']}"
+                        if not data.get("system", False)
+                        else data["message"]
+                    ),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
         except websockets.ConnectionClosedError:
