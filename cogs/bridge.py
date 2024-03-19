@@ -87,7 +87,10 @@ class Bridge(commands.Cog):
         await self.ws.send(
             json.dumps(
                 {
-                    "author": message.author.display_name,
+                    "author": (
+                        strip_non_ascii(message.author.display_name)
+                        or str(message.author)
+                    ),
                     "message": content,
                     "nonce": str(nonce),
                 }
