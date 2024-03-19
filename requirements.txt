@@ -1,3 +1,5 @@
 fastapi
 websockets
 beanie
+discord.py
+python-dotenv

@@ -1,13 +1,8 @@
-from typing import TypedDict
-
 from fastapi import WebSocket
 
-__all__ = ("Message", "manager")
+__all__ = ("manager",)
 
-
-class Message(TypedDict):
-    author: str
-    message: str
+from common import Message
 
 
 class ConnectionManager:
