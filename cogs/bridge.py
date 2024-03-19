@@ -84,13 +84,11 @@ class Bridge(commands.Cog):
 
         nonce = uuid4()
         self.sent.add(str(nonce))
+        author = strip_non_ascii(message.author.display_name) or str(message.author)
         await self.ws.send(
             json.dumps(
                 {
-                    "author": (
-                        strip_non_ascii(message.author.display_name)
-                        or str(message.author)
-                    ),
+                    "author": f"[DISCORD] {author}",
                     "message": content,
                     "nonce": str(nonce),
                 }
