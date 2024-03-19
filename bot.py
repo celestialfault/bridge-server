@@ -7,7 +7,7 @@ from discord.ext.commands import Bot, when_mentioned
 from db import init
 
 load_dotenv()
-intents = discord.Intents(messages=True, message_content=True, guilds=True)
+intents = discord.Intents(messages=True, message_content=True, members=True, guilds=True)
 bot = Bot(intents=intents, command_prefix=when_mentioned)
 
 

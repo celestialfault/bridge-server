@@ -12,7 +12,7 @@ class Tokens(commands.Cog):
     @commands.hybrid_command()
     @app_commands.guilds(discord.Object(id=int(os.environ["BRIDGE_GUILD"])))
     async def apikey(self, ctx: commands.Context):
-        """Create a new API key for use with the bridge mod"""
+        """Create a new key for use with the bridge mod"""
         await ctx.defer(ephemeral=True)
         token = uuid4()
         # its a UUID, and the scale of this isn't intended to be very high, but still...
@@ -23,7 +23,7 @@ class Tokens(commands.Cog):
             await User.insert_one(User(user_id=ctx.author.id, key=token))
         else:
             await User.find_one({"user_id": ctx.author.id}).update({"$set": {"key": str(token)}})
-        await ctx.send(f"Created token `{token}`", ephemeral=True)
+        await ctx.send(f"Your new key is `{token}`", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

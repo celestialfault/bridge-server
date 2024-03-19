@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from typing import cast
 from uuid import uuid4
 
@@ -11,6 +12,15 @@ from discord.ext import commands
 from discord.ext import tasks
 
 from common import Message
+
+EMOJI = re.compile(r"<a?(:[^:]+:)\d+>")
+USER_MENTION = re.compile(r"<@!?(\d+)>")
+CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
+
+
+def strip_non_ascii(string):
+    stripped = (c for c in string if 0 < ord(c) < 127)
+    return "".join(stripped)
 
 
 class Bridge(commands.Cog):
@@ -30,6 +40,21 @@ class Bridge(commands.Cog):
             f"ws://localhost:{os.environ['BRIDGE_PORT']}/bot/{os.environ['BOT_KEY']}"
         )
 
+    def sub_mentions(self, message: str) -> str:
+        for mention in USER_MENTION.finditer(message):
+            user_id = int(mention.group(1))
+            user = self.channel.guild.get_member(user_id)
+            if user:
+                message = message.replace(mention.group(0), f"@{user}")
+
+        for mention in CHANNEL_MENTION.finditer(message):
+            channel_id = int(mention.group(1))
+            channel = self.channel.guild.get_channel(channel_id)
+            if channel:
+                message = message.replace(mention.group(0), f"#{channel}")
+
+        return message
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if (
@@ -39,13 +64,30 @@ class Bridge(commands.Cog):
         ):
             return
 
+        content = message.content.replace("\n", " ")
+        content = EMOJI.sub(r"\1", content)
+        content = self.sub_mentions(content)
+        # 1.8.9 is 10 fucking years old and has no concept of any non-ASCII characters in its
+        # default font rendering, so just enforce ASCII to dodge the rendering issues entirely
+        content = strip_non_ascii(content)
+
+        if not content:
+            return
+        elif len(content) > 256:
+            await message.reply(
+                "Message was truncated to be under 256 characters long",
+                allowed_mentions=discord.AllowedMentions.none(),
+                delete_after=5,
+            )
+            content = content[:256]
+
         nonce = uuid4()
         self.sent.add(str(nonce))
         await self.ws.send(
             json.dumps(
                 {
                     "author": str(message.author),
-                    "message": message.content,
+                    "message": content,
                     "nonce": str(nonce),
                 }
             )
