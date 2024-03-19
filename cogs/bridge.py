@@ -19,8 +19,7 @@ CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
 
 
 def strip_non_ascii(string):
-    stripped = (c for c in string if 0 < ord(c) < 127)
-    return "".join(stripped)
+    return "".join(c for c in string if 0 < ord(c) < 127)
 
 
 class Bridge(commands.Cog):
@@ -30,6 +29,7 @@ class Bridge(commands.Cog):
         self.channel = bot.get_channel(int(os.environ["BRIDGE_CHANNEL"]))
         self.sent: set[str] = set()
         self.backoff = ExponentialBackoff()
+        self.backoff._max = 5
 
     async def cog_unload(self) -> None:
         self.ws_handler.cancel()
@@ -45,7 +45,7 @@ class Bridge(commands.Cog):
             user_id = int(mention.group(1))
             user = self.channel.guild.get_member(user_id)
             if user:
-                message = message.replace(mention.group(0), f"@{user}")
+                message = message.replace(mention.group(0), f"@{user.display_name}")
 
         for mention in CHANNEL_MENTION.finditer(message):
             channel_id = int(mention.group(1))
@@ -61,6 +61,7 @@ class Bridge(commands.Cog):
             message.author.bot
             or message.content.startswith(self.bot.user.mention)
             or message.channel.id != self.channel.id
+            or not message.content
         ):
             return
 
@@ -86,7 +87,7 @@ class Bridge(commands.Cog):
         await self.ws.send(
             json.dumps(
                 {
-                    "author": str(message.author),
+                    "author": message.author.display_name,
                     "message": content,
                     "nonce": str(nonce),
                 }
@@ -103,7 +104,10 @@ class Bridge(commands.Cog):
                     self.sent.discard(data["nonce"])
                     continue
 
-                await self.channel.send(f"**{data['author']}**: {data['message']}")
+                await self.channel.send(
+                    f"**{data['author']}**: {data['message']}",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
         except websockets.ConnectionClosedError:
             delay = self.backoff.delay()
             print(f"Websocket connection closed, waiting {delay} to reconnect")
