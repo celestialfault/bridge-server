@@ -5,8 +5,10 @@ import re
 from typing import cast
 from uuid import uuid4
 
+import aiohttp
 import discord
 import websockets
+from discord import app_commands
 from discord.backoff import ExponentialBackoff
 from discord.ext import commands
 from discord.ext import tasks
@@ -82,18 +84,29 @@ class Bridge(commands.Cog):
             )
             content = content[:256]
 
+        author = strip_non_ascii(message.author.display_name) or str(message.author)
+        if message.reference and message.reference.cached_message:
+            author += ", replying to "
+            reply_author = message.reference.cached_message.author
+            if reply_author.id == self.bot.user.id:
+                author += message.reference.cached_message.content.split("**")[1]
+            else:
+                author += strip_non_ascii(reply_author.display_name) or str(
+                    reply_author
+                )
+
         nonce = uuid4()
         self.sent.add(str(nonce))
-        author = strip_non_ascii(message.author.display_name) or str(message.author)
-        await self.ws.send(
-            json.dumps(
-                {
-                    "author": f"[DISCORD] {author}",
-                    "message": content,
-                    "nonce": str(nonce),
-                }
-            )
-        )
+
+        data = {
+            "author": f"[DISCORD] {author}",
+            "message": content,
+            "nonce": str(nonce),
+        }
+        if message.flags.suppress_notifications:
+            data["pings"] = False
+
+        await self.ws.send(json.dumps(data))
 
     @tasks.loop()
     async def ws_handler(self):
@@ -118,6 +131,21 @@ class Bridge(commands.Cog):
             print(f"Websocket connection closed, waiting {delay} to reconnect")
             await asyncio.sleep(delay)
             await self.init_ws()
+
+    @commands.hybrid_command()
+    @app_commands.guilds(discord.Object(id=int(os.environ["BRIDGE_GUILD"])))
+    async def online(self, ctx: commands.Context):
+        if ctx.interaction:
+            await cast(discord.InteractionResponse, ctx.interaction.response).defer(
+                ephemeral=True, thinking=True
+            )
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"http://localhost:{os.environ['BRIDGE_PORT']}/online",
+                headers={"Bot-Key": os.environ["BOT_KEY"]},
+            ) as o:
+                users: list[str] = await o.json()
+                await ctx.send(f"**Users currently online:** {', '.join(users)}")
 
 
 async def setup(bot: commands.Bot):
