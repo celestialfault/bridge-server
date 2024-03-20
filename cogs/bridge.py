@@ -135,6 +135,7 @@ class Bridge(commands.Cog):
     @commands.hybrid_command()
     @app_commands.guilds(discord.Object(id=int(os.environ["BRIDGE_GUILD"])))
     async def online(self, ctx: commands.Context):
+        """List all players currently connected to the in-game bridge"""
         if ctx.interaction:
             await cast(discord.InteractionResponse, ctx.interaction.response).defer(
                 ephemeral=True, thinking=True
