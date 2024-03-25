@@ -10,10 +10,10 @@ import discord
 import websockets
 from discord import app_commands
 from discord.backoff import ExponentialBackoff
-from discord.ext import commands
-from discord.ext import tasks
+from discord.ext import commands, tasks
 
 from common import Message
+from db import User
 
 EMOJI = re.compile(r"<a?(:[^:]+:)\d+>")
 USER_MENTION = re.compile(r"<@!?(\d+)>")
@@ -65,6 +65,12 @@ class Bridge(commands.Cog):
             or message.channel.id != self.channel.id
             or not message.content
         ):
+            return
+
+        user: User | None = await User.find_one({"user_id": message.author.id})
+        if user and (user.is_muted() or user.banned):
+            if message.channel.permissions_for(message.guild.me).manage_messages:
+                await message.delete()
             return
 
         content = message.content.replace("\n", " ")
