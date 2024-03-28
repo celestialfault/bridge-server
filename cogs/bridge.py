@@ -127,14 +127,18 @@ class Bridge(commands.Cog):
 
                 message = data["message"]
                 message = FORMAT_CODE.sub("", message)
-                await self.channel.send(
-                    (
-                        f"**{data['author']}**: {message}"
-                        if not data.get("system", False)
-                        else message
-                    ),
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
+
+                if data.get("system", False):
+                    await self.channel.send(
+                        embed=discord.Embed(
+                            description=message, colour=discord.Colour.orange()
+                        )
+                    )
+                else:
+                    await self.channel.send(
+                        f"**{data['author']}**: {message}",
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
         except websockets.ConnectionClosedError:
             delay = self.backoff.delay()
             print(f"Websocket connection closed, waiting {delay} to reconnect")
