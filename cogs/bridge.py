@@ -18,6 +18,7 @@ from db import User
 EMOJI = re.compile(r"<a?(:[^:]+:)\d+>")
 USER_MENTION = re.compile(r"<@!?(\d+)>")
 CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
+FORMAT_CODE = re.compile(r"§[0-9A-FK-ORZ]", re.IGNORECASE)
 
 
 def strip_non_ascii(string):
@@ -124,11 +125,13 @@ class Bridge(commands.Cog):
                     self.sent.discard(data["nonce"])
                     continue
 
+                message = data["message"]
+                message = FORMAT_CODE.sub("", message)
                 await self.channel.send(
                     (
-                        f"**{data['author']}**: {data['message']}"
+                        f"**{data['author']}**: {message}"
                         if not data.get("system", False)
-                        else data["message"]
+                        else message
                     ),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )

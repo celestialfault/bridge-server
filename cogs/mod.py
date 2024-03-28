@@ -1,11 +1,16 @@
+import asyncio.subprocess
 import os
+import sys
 from datetime import datetime, timedelta
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, cast
+from uuid import uuid4
 
 import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
+from discord.ext.commands import Bot
 
 from db import User
 from time_converter import TimeDelta
@@ -22,6 +27,9 @@ def bridge_admin():
 
 
 class Mod(commands.Cog):
+    def __init__(self, bot: Bot):
+        self.bot = bot
+
     @staticmethod
     async def _post(endpoint: str, data: dict) -> dict:
         async with aiohttp.ClientSession() as session:
@@ -37,6 +45,35 @@ class Mod(commands.Cog):
     @bridge_admin()
     async def bridge(self, ctx: commands.Context):
         """Bridge moderation commands"""
+
+    @bridge.command()
+    @bridge_admin()
+    @commands.check(lambda ctx: (Path(os.getcwd()) / "restart.sh").exists())
+    async def restart(self, ctx: commands.Context):
+        """Restart the bridge server"""
+        await ctx.send("Restarting...")
+        p = await asyncio.subprocess.create_subprocess_exec(
+            "sh restart.sh", stdout=sys.stdout, stderr=sys.stderr
+        )
+        await p.wait()
+        await self.bot.close()
+
+    @bridge.command()
+    @app_commands.describe(message="The message to announce")
+    @bridge_admin()
+    async def announce(self, ctx: commands.Context, *, message: str):
+        """Send an announcement message"""
+        from cogs.bridge import Bridge
+
+        bridge_cog = cast(Bridge, ctx.bot.get_cog("Bridge"))
+        await bridge_cog.ws.send(
+            {
+                "author": str(ctx.author),
+                "message": f"§6{message}",
+                "nonce": str(uuid4()),
+                "system": True,
+            }
+        )
 
     # noinspection PyTypeHints
     @bridge.command()
@@ -131,4 +168,4 @@ class Mod(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(Mod())
+    await bot.add_cog(Mod(bot))

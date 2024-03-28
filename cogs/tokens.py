@@ -11,6 +11,7 @@ from db import User
 class Tokens(commands.Cog):
     @commands.hybrid_command()
     @app_commands.guilds(discord.Object(id=int(os.environ["BRIDGE_GUILD"])))
+    @commands.check(lambda ctx: ctx.interaction is not None)
     async def apikey(self, ctx: commands.Context):
         """Create a new key for use with the bridge mod"""
         await ctx.defer(ephemeral=True)
