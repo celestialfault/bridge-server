@@ -11,7 +11,6 @@ import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
-from discord.ext.commands import Bot
 
 from db import User
 from time_converter import TimeDelta
@@ -30,9 +29,6 @@ def bridge_admin():
 
 
 class Mod(commands.Cog):
-    def __init__(self, bot: Bot):
-        self.bot = bot
-
     @staticmethod
     async def _post(endpoint: str, data: dict) -> dict:
         async with aiohttp.ClientSession() as session:
@@ -59,7 +55,7 @@ class Mod(commands.Cog):
             "sh restart.sh", stdout=sys.stdout, stderr=sys.stderr
         )
         await p.wait()
-        await self.bot.close()
+        await ctx.bot.close()
 
     @bridge.command()
     @app_commands.describe(
@@ -77,7 +73,7 @@ class Mod(commands.Cog):
         await bridge_cog.ws.send(
             {
                 "author": str(ctx.author),
-                "message": {message},
+                "message": message,
                 "nonce": str(uuid4()),
                 "system": True,
             }
@@ -176,4 +172,4 @@ class Mod(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(Mod(bot))
+    await bot.add_cog(Mod())
