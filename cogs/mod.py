@@ -78,6 +78,7 @@ class Mod(commands.Cog):
                 "system": True,
             }
         )
+        await ctx.send("Announcement sent!")
 
     # noinspection PyTypeHints
     @bridge.command()
