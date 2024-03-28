@@ -1,5 +1,6 @@
 import asyncio.subprocess
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,6 +15,8 @@ from discord.ext.commands import Bot
 
 from db import User
 from time_converter import TimeDelta
+
+FORMAT_CODE = re.compile(r"&([0-9A-FK-ORZ])", re.IGNORECASE)
 
 
 def bridge_admin():
@@ -59,17 +62,22 @@ class Mod(commands.Cog):
         await self.bot.close()
 
     @bridge.command()
-    @app_commands.describe(message="The message to announce")
+    @app_commands.describe(
+        message="The message to announce; color codes (e.g. &a) are supported"
+    )
     @bridge_admin()
     async def announce(self, ctx: commands.Context, *, message: str):
-        """Send an announcement message"""
+        """Send a system message through the bot"""
         from cogs.bridge import Bridge
 
         bridge_cog = cast(Bridge, ctx.bot.get_cog("Bridge"))
+        message = FORMAT_CODE.sub(r"§\1", message)
+        if "§" not in message:
+            message = f"§6{message}"
         await bridge_cog.ws.send(
             {
                 "author": str(ctx.author),
-                "message": f"§6{message}",
+                "message": {message},
                 "nonce": str(uuid4()),
                 "system": True,
             }
