@@ -6,13 +6,8 @@ import discord.utils
 from discord.ext.commands import BadArgument, Converter
 
 from common import delta_to_str
-from .parser import (
-    AboveMaxDuration,
-    BelowMinDuration,
-    NoDuration,
-    TimePeriod,
-    TimeRepresentation,
-)
+
+from .parser import AboveMaxDuration, BelowMinDuration, NoDuration, TimePeriod, TimeRepresentation
 
 __all__ = ("TimeDelta", "BelowMinDuration", "AboveMaxDuration", "NoDuration")
 
@@ -32,17 +27,11 @@ class TimeDelta(Converter):
 
     def __repr__(self):
         default_period = self._default_period
-        max_time = (
-            TimeRepresentation.reps_to_delta(self._max_time) if self._max_time else None
-        )
-        min_time = (
-            TimeRepresentation.reps_to_delta(self._min_time) if self._min_time else None
-        )
+        max_time = TimeRepresentation.reps_to_delta(self._max_time) if self._max_time else None
+        min_time = TimeRepresentation.reps_to_delta(self._min_time) if self._min_time else None
         return f"TimeDelta({default_period=}, {max_time=}, {min_time=})"
 
-    def from_str(
-        self, duration: str, *, bypass_restrictions: bool = False
-    ) -> timedelta:
+    def from_str(self, duration: str, *, bypass_restrictions: bool = False) -> timedelta:
         """Resolve an input duration with the converter's current configuration options
 
         All exceptions this method raises are subclasses of :class:`ValueError`.

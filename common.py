@@ -4,7 +4,12 @@ from typing import TypedDict
 from pydantic import BaseModel
 
 TIME_UNITS = ((60 * 60 * 24, "d"), (60 * 60, "h"), (60, "m"), (1, "s"))
-__all__ = ("delta_to_str", "Message", "ModRequest", "MuteRequest")
+__all__ = ("delta_to_str", "Message", "ModRequest", "MuteRequest", "SPAM_INTERVALS")
+SPAM_INTERVALS: list[tuple[timedelta, int]] = [
+    (timedelta(seconds=4), 5),
+    (timedelta(seconds=10), 10),
+    (timedelta(seconds=60), 40),
+]
 
 
 def delta_to_str(delta: timedelta) -> str:

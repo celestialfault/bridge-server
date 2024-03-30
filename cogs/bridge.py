@@ -69,7 +69,7 @@ class Bridge(commands.Cog):
             return
 
         user: User | None = await User.find_one({"user_id": message.author.id})
-        if user and (user.is_muted() or user.banned):
+        if user and (user.is_muted or user.banned):
             if message.channel.permissions_for(message.guild.me).manage_messages:
                 await message.delete()
             return
@@ -92,15 +92,14 @@ class Bridge(commands.Cog):
             content = content[:256]
 
         author = strip_non_ascii(message.author.display_name) or str(message.author)
-        if message.reference and message.reference.cached_message:
+        replying_to = message.reference.cached_message if message.reference else None
+        if replying_to and (replying_to.author.id != self.bot.user.id or replying_to.content):
             author += ", replying to "
             reply_author = message.reference.cached_message.author
             if reply_author.id == self.bot.user.id:
                 author += message.reference.cached_message.content.split("**")[1]
             else:
-                author += strip_non_ascii(reply_author.display_name) or str(
-                    reply_author
-                )
+                author += strip_non_ascii(reply_author.display_name) or str(reply_author)
 
         nonce = uuid4()
         self.sent.add(str(nonce))
@@ -130,9 +129,7 @@ class Bridge(commands.Cog):
 
                 if data.get("system", False):
                     await self.channel.send(
-                        embed=discord.Embed(
-                            description=message, colour=discord.Colour.orange()
-                        )
+                        embed=discord.Embed(description=message, colour=discord.Colour.orange())
                     )
                 else:
                     await self.channel.send(
@@ -158,8 +155,21 @@ class Bridge(commands.Cog):
                 f"http://localhost:{os.environ['BRIDGE_PORT']}/online",
                 headers={"Bot-Key": os.environ["BOT_KEY"]},
             ) as o:
-                users: list[str] = await o.json()
-                await ctx.send(f"**Users currently online:** {', '.join(users)}")
+                users: dict[str, int] = await o.json()
+
+        if not users:
+            await ctx.send("There is nobody online.")
+            return
+
+        user = await User.find_one({"user_id": ctx.author.id})
+        if user and user.admin and ctx.interaction:
+            online = "\n".join([f"- **{user}**: <@{id}>" for user, id in users.items()])
+            await ctx.send(
+                f"**Users currently online:**\n\n{online}",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        else:
+            await ctx.send(f"**Users currently online:** {', '.join(users.keys())}")
 
 
 async def setup(bot: commands.Bot):

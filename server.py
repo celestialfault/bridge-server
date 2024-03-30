@@ -5,19 +5,11 @@ from typing import Annotated
 from uuid import uuid4
 
 from dotenv import load_dotenv
-
-from fastapi import (
-    FastAPI,
-    WebSocket,
-    WebSocketDisconnect,
-    WebSocketException,
-    status,
-    Header,
-)
+from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect, WebSocketException, status
 from fastapi.responses import JSONResponse
 
-from common import MuteRequest, ModRequest, delta_to_str
-from connections import manager, UserConnection
+from common import ModRequest, MuteRequest, delta_to_str
+from connections import UserConnection, manager
 from db import User, init
 
 
@@ -104,7 +96,7 @@ async def mute(request: MuteRequest, bot_key: Annotated[str, Header()]):
             status_code=400,
             content={"success": False, "reason": "User is currently banned"},
         )
-    if not target.is_muted() and not request.until:
+    if not target.is_muted and not request.until:
         return JSONResponse(
             status_code=400,
             content={"success": False, "reason": "User is not currently muted"},
@@ -113,8 +105,10 @@ async def mute(request: MuteRequest, bot_key: Annotated[str, Header()]):
 
     for connection in manager.all_from(target):
         connection.user_data = target
-        if target.is_muted():
-            await _send_muted(connection, tense="have been")
+        if target.is_muted:
+            duration = delta_to_str(connection.user_data.muted_until - datetime.utcnow())
+            reason = connection.user_data.mute_reason or "No reason specified"
+            await connection.send_system(f"§cYou have been muted for {duration}:§r {reason}")
         else:
             await connection.send_system("§bYou have been unmuted.")
 
@@ -128,7 +122,7 @@ async def online(bot_key: Annotated[str, Header()]):
             status_code=403, content={"success": False, "reason": "Invalid bot key"}
         )
 
-    return {x.user for x in manager.active_connections if not x.system}
+    return {x.user: x.user_data.user_id for x in manager.active_connections if not x.system}
 
 
 @app.websocket("/bot/{bot_key}")
@@ -168,40 +162,11 @@ async def websocket(
         while True:
             if api_version == 0:
                 message = await ws.receive_text()
-                if connection.is_muted():
-                    await _send_muted(connection)
-                    continue
-                await _broadcast(username, message)
+                await connection.handle_ws_request("send", {"data": message})
             elif api_version == 1:
                 data = await ws.receive_json()
-                type = data.get("type")
-                if type == "send":
-                    if connection.is_muted():
-                        await _send_muted(connection)
-                        continue
-                    await _broadcast(
-                        username, str(data["data"]), nonce=str(data.get("nonce"))
-                    )
-                elif type == "request_online":
-                    await _send_online(connection)
+                if "type" not in data:
+                    continue
+                await connection.handle_ws_request(data["type"], data)
     except WebSocketDisconnect:
         manager.disconnect(connection)
-
-
-async def _send_muted(connection: UserConnection, tense: str = "are"):
-    duration = delta_to_str(connection.user_data.muted_until - datetime.utcnow())
-    reason = connection.user_data.mute_reason or "No reason specified"
-
-    await connection.send_system(f"§cYou {tense} muted for {duration}:§r {reason}")
-
-
-async def _send_online(connection: UserConnection, *, color: bool = True):
-    online = "§aOnline:§r " if color else "Online: "
-    connected = {x.user for x in manager.active_connections if not x.system}
-    await connection.send_system(online + ", ".join(connected))
-
-
-async def _broadcast(user: str, message: str, *, nonce: str = None):
-    await manager.broadcast(
-        {"author": user, "message": message, "nonce": nonce or uuid()}
-    )

@@ -5,15 +5,13 @@ from typing import cast
 import discord
 from discord import app_commands
 from discord.ext import commands
-from dotenv import load_dotenv
 from discord.ext.commands import Bot, when_mentioned
+from dotenv import load_dotenv
 
 from db import init
 
 load_dotenv()
-intents = discord.Intents(
-    messages=True, message_content=True, members=True, guilds=True
-)
+intents = discord.Intents(messages=True, message_content=True, members=True, guilds=True)
 bot = Bot(intents=intents, command_prefix=when_mentioned)
 log = logging.getLogger("bot")
 

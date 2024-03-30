@@ -13,6 +13,7 @@ class User(Document):
     muted_until: datetime | None = None
     mute_reason: str | None = None
 
+    @property
     def is_muted(self) -> bool:
         return self.muted_until and self.muted_until >= datetime.utcnow()
 

@@ -58,9 +58,7 @@ class Mod(commands.Cog):
         await ctx.bot.close()
 
     @bridge.command()
-    @app_commands.describe(
-        message="The message to announce; color codes (e.g. &a) are supported"
-    )
+    @app_commands.describe(message="The message to announce; color codes (e.g. &a) are supported")
     @bridge_admin()
     async def announce(self, ctx: commands.Context, *, message: str):
         """Send a system message through the bot"""
@@ -136,9 +134,7 @@ class Mod(commands.Cog):
         user="The Discord user to ban from the bridge", reason="The reason for this ban"
     )
     @bridge_admin()
-    async def ban(
-        self, ctx: commands.Context, user: discord.User, *, reason: str = None
-    ):
+    async def ban(self, ctx: commands.Context, user: discord.User, *, reason: str = None):
         """Ban a user from using the bridge"""
         await ctx.defer()
         response = await self._post("ban", {"id": user.id, "reason": reason})
