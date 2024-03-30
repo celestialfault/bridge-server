@@ -52,7 +52,7 @@ class Mod(commands.Cog):
         """Restart the bridge server"""
         await ctx.send("Restarting...")
         p = await asyncio.subprocess.create_subprocess_exec(
-            "sh restart.sh", stdout=sys.stdout, stderr=sys.stderr
+            "sh", "restart.sh", stdout=sys.stdout, stderr=sys.stderr
         )
         await p.wait()
         await ctx.bot.close()
