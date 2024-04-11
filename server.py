@@ -158,6 +158,16 @@ async def websocket(
 
     connection = UserConnection(username, ws, user_data=user)
     await manager.connect(connection)
+
+    if api_version == 0:
+        await connection.send_system(
+            "You are using an outdated version of the mod! Update at"
+            # yeah, versions as old as this won't have clickable links, but :shrug:
+            # not much I can really do there.
+            " https://github.com/celestialfault/bridge-mod/releases/latest",
+            author="System",
+        )
+
     try:
         while True:
             if api_version == 0:
