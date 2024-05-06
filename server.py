@@ -46,6 +46,7 @@ async def ban(request: ModRequest, bot_key: Annotated[str, Header()]):
     target = await User.find_one({"user_id": request.id})
     if not target:
         target = User(user_id=request.id, key=uuid())
+        await target.insert()
     if target and target.admin:
         return JSONResponse(
             status_code=400,
@@ -86,6 +87,7 @@ async def mute(request: MuteRequest, bot_key: Annotated[str, Header()]):
     target = await User.find_one({"user_id": request.id})
     if not target:
         target = User(user_id=request.id, key=uuid())
+        await target.insert()
     if target.admin and request.until:
         return JSONResponse(
             status_code=400,
