@@ -73,9 +73,10 @@ class Bridge(commands.Cog):
             if message.channel.permissions_for(message.guild.me).manage_messages:
                 await message.delete()
 
-            from cogs.mod import Mod
+            if user.banned:
+                from cogs.mod import Mod
 
-            await Mod.remove_permissions(message.channel, message.author)
+                await Mod.remove_permissions(message.channel, message.author)
             return
 
         content = message.content.replace("\n", " ")
