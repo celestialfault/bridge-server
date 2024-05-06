@@ -30,6 +30,30 @@ def bridge_admin():
 
 class Mod(commands.Cog):
     @staticmethod
+    async def remove_permissions(channel: discord.TextChannel, member: discord.User):
+        if not channel.guild or not channel.permissions_for(channel.guild.me).manage_permissions:
+            return
+        await channel.set_permissions(
+            # dpy actually checks for abc.User, so passing a User-hinted parameter is fine.
+            cast(discord.Member, member),
+            send_messages=False,
+            add_reactions=False,
+            use_application_commands=False,
+            reason="Banned from using the bridge",
+        )
+
+    @staticmethod
+    async def restore_permissions(channel: discord.TextChannel, member: discord.User):
+        if not channel.guild or not channel.permissions_for(channel.guild.me).manage_permissions:
+            return
+        await channel.set_permissions(
+            cast(discord.Member, member),
+            send_messages=None,
+            add_reactions=None,
+            use_application_commands=None,
+        )
+
+    @staticmethod
     async def _post(endpoint: str, data: dict) -> dict:
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -143,6 +167,7 @@ class Mod(commands.Cog):
                 f"\N{WHITE HEAVY CHECK MARK} {user.mention} is now banned from using the bridge.",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
+            await self.remove_permissions(ctx.channel, user)
         else:
             await ctx.send(
                 f"\N{WARNING SIGN}\N{VARIATION SELECTOR-16} {response.get('reason')}",
@@ -161,6 +186,7 @@ class Mod(commands.Cog):
                 f"\N{WHITE HEAVY CHECK MARK} {user.mention} has been unbanned.",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
+            await self.restore_permissions(ctx.channel, user)
         else:
             await ctx.send(
                 f"\N{WARNING SIGN}\N{VARIATION SELECTOR-16} {response.get('reason')}",
