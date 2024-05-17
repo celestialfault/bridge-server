@@ -212,7 +212,7 @@ class Bridge(commands.Cog):
             await self._send_system("§7[SOOPY V2] An error occurred while running the command")
             return
         if not data.get("success") or "raw" not in data:
-            cause = data.get('cause', 'An error occurred while running the command')
+            cause = data.get("cause", "An error occurred while running the command")
             await self._send_system(f"§7[SOOPY V2] {cause}")
             return
 
@@ -256,9 +256,8 @@ class Bridge(commands.Cog):
             return
         user = await User.find_one({"user_id": ctx.author.id})
         if not user:
-            # ideally this would make a new user, but like... :shrug:
-            await ctx.send("Get an `/apikey` before using this command!", ephemeral=True)
-            return
+            user = User(user_id=ctx.author.id, key=str(uuid4()))
+            await user.insert()
         if user.banned:
             await ctx.send("You are currently banned from using the bridge!", ephemeral=True)
             return
@@ -268,7 +267,7 @@ class Bridge(commands.Cog):
             async with session.get(f"https://playerdb.co/api/player/minecraft/{username}") as resp:
                 data = await resp.json()
         if not data or not data.get("success") or "data" not in data:
-            await ctx.send("Can't verify your username!", ephemeral=True)
+            await ctx.send("Can't verify your username!")
             return
         await user.set({"linked_account": data["data"]["player"]["username"]})
         await ctx.send(f"Updated your IGN to `{user.linked_account}`")
