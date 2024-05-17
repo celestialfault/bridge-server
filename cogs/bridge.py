@@ -20,6 +20,7 @@ EMOJI = re.compile(r"<a?(:[^:]+:)\d+>")
 USER_MENTION = re.compile(r"<@!?(\d+)>")
 CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
 FORMAT_CODE = re.compile(r"§[0-9A-FK-ORZ]", re.IGNORECASE)
+USERNAME_PATTERN = re.compile(r"[a-z0-9_]{3,16}", re.IGNORECASE)
 
 
 def strip_non_ascii(string):
@@ -99,7 +100,11 @@ class Bridge(commands.Cog):
             )
             content = content[:256]
 
-        author = strip_non_ascii(message.author.display_name) or str(message.author)
+        author = (
+            (user and user.linked_account)
+            or strip_non_ascii(message.author.display_name)
+            or str(message.author)
+        )
         replying_to = message.reference.cached_message if message.reference else None
         if replying_to and (replying_to.author.id != self.bot.user.id or replying_to.content):
             author += ", replying to "
@@ -107,7 +112,12 @@ class Bridge(commands.Cog):
             if reply_author.id == self.bot.user.id:
                 author += message.reference.cached_message.content.split("**")[1]
             else:
-                author += strip_non_ascii(reply_author.display_name) or str(reply_author)
+                referenced_user = await User.find_one({"user_id": reply_author.id})
+                author += (
+                    (referenced_user and referenced_user.linked_account)
+                    or strip_non_ascii(reply_author.display_name)
+                    or str(reply_author)
+                )
 
         nonce = uuid4()
         self.sent.add(str(nonce))
@@ -121,6 +131,11 @@ class Bridge(commands.Cog):
             data["pings"] = False
 
         await self.ws.send(json.dumps(data))
+        if user and user.linked_account:
+            # noinspection PyAsyncCall
+            self.bot.loop.create_task(
+                self.soopy_command(message=content, author=user.linked_account)
+            )
 
     @tasks.loop()
     async def ws_handler(self):
@@ -226,6 +241,29 @@ class Bridge(commands.Cog):
             )
         else:
             await ctx.send(f"**Users currently online:** {', '.join(users.keys())}")
+
+    @commands.hybrid_command()
+    @app_commands.guilds(discord.Object(id=int(os.environ["BRIDGE_GUILD"])))
+    async def link(self, ctx: commands.Context, username: str):
+        """Link your Minecraft account"""
+        if not USERNAME_PATTERN.fullmatch(username):
+            await ctx.send("That isn't a valid username!", ephemeral=True)
+            return
+        user = await User.find_one({"user_id": ctx.author.id})
+        if not user:
+            # ideally this would make a new user, but like... :shrug:
+            await ctx.send("Get an `/apikey` before using this command!", ephemeral=True)
+            return
+
+        await ctx.defer()
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"https://playerdb.co/api/player/minecraft/{username}") as resp:
+                data = await resp.json()
+        if not data or not data.get("success") or "data" not in data:
+            await ctx.send("Can't verify your username!", ephemeral=True)
+            return
+        await user.set({"linked_account": data["data"]["player"]["username"]})
+        await ctx.send(f"Updated your IGN to `{user.linked_account}`")
 
 
 async def setup(bot: commands.Bot):

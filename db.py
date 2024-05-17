@@ -12,6 +12,7 @@ class User(Document):
     ban_reason: str | None = None
     muted_until: datetime | None = None
     mute_reason: str | None = None
+    linked_account: str | None = None
 
     @property
     def is_muted(self) -> bool:
