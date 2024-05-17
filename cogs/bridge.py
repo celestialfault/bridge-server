@@ -196,6 +196,7 @@ class Bridge(commands.Cog):
         try:
             # fuck it, good enough.
             float(command)
+            command.isdecimal()
         except ValueError:
             pass
         else:
@@ -205,13 +206,17 @@ class Bridge(commands.Cog):
         try:
             data = await self.__fetch_soopy(author, message[1:])
         except aiohttp.ClientError:
-            await self._send_system("§7[SOOPY V2]§r An error occurred while running the command")
+            await self._send_system("§7[SOOPY V2] An error occurred while running the command")
             return
-        if not data or not data.get("success") or not data.get("raw"):
-            await self._send_system("§7[SOOPY V2]§r An error occurred while running the command")
+        if not data:
+            await self._send_system("§7[SOOPY V2] An error occurred while running the command")
+            return
+        if not data.get("success") or "raw" not in data:
+            cause = data.get('cause', 'An error occurred while running the command')
+            await self._send_system(f"§7[SOOPY V2] {cause}")
             return
 
-        await self._send_system(f"§7[SOOPY V2]§r {data['raw']}")
+        await self._send_system(f"§7[SOOPY V2] {data['raw']}")
 
     @commands.hybrid_command()
     @app_commands.guilds(discord.Object(id=int(os.environ["BRIDGE_GUILD"])))
@@ -253,6 +258,9 @@ class Bridge(commands.Cog):
         if not user:
             # ideally this would make a new user, but like... :shrug:
             await ctx.send("Get an `/apikey` before using this command!", ephemeral=True)
+            return
+        if user.banned:
+            await ctx.send("You are currently banned from using the bridge!", ephemeral=True)
             return
 
         await ctx.defer()
