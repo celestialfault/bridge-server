@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import urllib.parse
@@ -16,6 +17,7 @@ from discord.ext import commands, tasks
 from common import Message
 from db import User
 
+log = logging.getLogger("bot.bridge")
 EMOJI = re.compile(r"<a?(:[^:]+:)\d+>")
 USER_MENTION = re.compile(r"<@!?(\d+)>")
 CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
@@ -35,12 +37,12 @@ class Bridge(commands.Cog):
         self.sent: set[str] = set()
         self.backoff = ExponentialBackoff()
         self.backoff._max = 5
-        self._soopy_session = aiohttp.ClientSession()
+        self.soopy_session = aiohttp.ClientSession()
 
     async def cog_unload(self) -> None:
         self.ws_handler.cancel()
         await self.ws.close()
-        await self._soopy_session.close()
+        await self.soopy_session.close()
 
     async def init_ws(self):
         self.ws = await websockets.connect(
@@ -183,31 +185,30 @@ class Bridge(commands.Cog):
             )
         )
 
-    async def __fetch_soopy(self, user: str, command: str):
-        uri = f"https://soopy.dev/api/guildBot/runCommand?user={user}&cmd={urllib.parse.quote_plus(command)}"
-        async with self._soopy_session.get(uri) as resp:
-            return await resp.json()
-
     async def soopy_command(self, message: str, author: str):
         if not message.startswith("-") or message.startswith("- "):
             return
 
-        command = message[1:].split(" ")[0]
         try:
-            # fuck it, good enough.
-            float(command)
-            command.isdecimal()
+            # ignore messages which are simply negative numbers
+            float(message[1:].split(" ")[0])
         except ValueError:
             pass
         else:
             return
 
+        # this can be safely echoed back as this method is only ever called once we've done some
+        # basic sanitization on the message
         await self._send_system(f"§7[SOOPY V2] {message}")
         try:
-            data = await self.__fetch_soopy(author, message[1:])
-        except aiohttp.ClientError:
-            await self._send_system("§7[SOOPY V2] An error occurred while running the command")
-            return
+            command = urllib.parse.quote_plus(message[1:])
+            uri = f"https://soopy.dev/api/guildBot/runCommand?user={author}&cmd={command}"
+            async with self.soopy_session.get(uri) as resp:
+                data = await resp.json()
+        except aiohttp.ClientError as e:
+            log.warning("Soopy guild bot API returned an error", exc_info=e)
+            data = None
+
         if not data:
             await self._send_system("§7[SOOPY V2] An error occurred while running the command")
             return
