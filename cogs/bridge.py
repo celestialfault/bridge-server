@@ -186,6 +186,7 @@ class Bridge(commands.Cog):
         else:
             return
 
+        await self._send_system(f"§7[SOOPY V2] {message}")
         try:
             data = await self.__fetch_soopy(author, message[1:])
         except aiohttp.ClientError:
