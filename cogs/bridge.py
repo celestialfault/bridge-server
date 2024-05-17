@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import urllib.parse
 from typing import cast
 from uuid import uuid4
 
@@ -33,10 +34,12 @@ class Bridge(commands.Cog):
         self.sent: set[str] = set()
         self.backoff = ExponentialBackoff()
         self.backoff._max = 5
+        self._soopy_session = aiohttp.ClientSession()
 
     async def cog_unload(self) -> None:
         self.ws_handler.cancel()
         await self.ws.close()
+        await self._soopy_session.close()
 
     async def init_ws(self):
         self.ws = await websockets.connect(
@@ -141,11 +144,58 @@ class Bridge(commands.Cog):
                         f"**{data['author']}**: {message}",
                         allowed_mentions=discord.AllowedMentions.none(),
                     )
+                    # shut up pycharm
+                    # noinspection PyAsyncCall
+                    self.bot.loop.create_task(self.soopy_command(message, data["author"]))
         except websockets.ConnectionClosedError:
             delay = self.backoff.delay()
             print(f"Websocket connection closed, waiting {delay} to reconnect")
             await asyncio.sleep(delay)
             await self.init_ws()
+
+    async def _send_system(self, message: str):
+        await self.ws.send(
+            json.dumps(
+                {
+                    "system": True,
+                    "author": "Bot",
+                    "message": message,
+                    # note that we don't do anything with the nonce here, unlike with other messages
+                    # we send - this is on purpose, as we want this to be echoed back for us so we
+                    # don't have to handle sending this ourselves
+                    "nonce": str(uuid4()),
+                }
+            )
+        )
+
+    async def __fetch_soopy(self, user: str, command: str):
+        uri = f"https://soopy.dev/api/guildBot/runCommand?user={user}&cmd={urllib.parse.quote_plus(command)}"
+        async with self._soopy_session.get(uri) as resp:
+            return await resp.json()
+
+    async def soopy_command(self, message: str, author: str):
+        if not message.startswith("-") or message.startswith("- "):
+            return
+
+        command = message[1:].split(" ")[0]
+        try:
+            # fuck it, good enough.
+            float(command)
+        except ValueError:
+            pass
+        else:
+            return
+
+        try:
+            data = await self.__fetch_soopy(author, message[1:])
+        except aiohttp.ClientError:
+            await self._send_system("§7[SOOPY V2]§r An error occurred while running the command")
+            return
+        if not data or not data.get("success") or not data.get("raw"):
+            await self._send_system("§7[SOOPY V2]§r An error occurred while running the command")
+            return
+
+        await self._send_system(f"§7[SOOPY V2]§r {data['raw']}")
 
     @commands.hybrid_command()
     @app_commands.guilds(discord.Object(id=int(os.environ["BRIDGE_GUILD"])))
