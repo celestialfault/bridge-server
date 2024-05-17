@@ -167,7 +167,8 @@ class Mod(commands.Cog):
                 f"\N{WHITE HEAVY CHECK MARK} {user.mention} is now banned from using the bridge.",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-            await self.remove_permissions(ctx.channel, user)
+            bridge_channel = ctx.bot.get_channel(int(os.environ["BRIDGE_CHANNEL"]))
+            await self.remove_permissions(bridge_channel, user)
         else:
             await ctx.send(
                 f"\N{WARNING SIGN}\N{VARIATION SELECTOR-16} {response.get('reason')}",
