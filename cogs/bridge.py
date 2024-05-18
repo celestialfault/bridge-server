@@ -138,6 +138,12 @@ class Bridge(commands.Cog):
             self.bot.loop.create_task(
                 self.soopy_command(message=content, author=user.linked_account)
             )
+        elif self._is_possibly_soopy(content):
+            await message.reply(
+                "Use `/link` before using Soopy commands in Discord!",
+                delete_after=10,
+                mention_author=False,
+            )
 
     @tasks.loop()
     async def ws_handler(self):
@@ -185,16 +191,21 @@ class Bridge(commands.Cog):
             )
         )
 
-    async def soopy_command(self, message: str, author: str):
+    @staticmethod
+    def _is_possibly_soopy(message: str):
         if not message.startswith("-") or message.startswith("- "):
-            return
+            return False
 
         try:
             # ignore messages which are simply negative numbers
             float(message[1:].split(" ")[0])
         except ValueError:
-            pass
+            return True
         else:
+            return False
+
+    async def soopy_command(self, message: str, author: str):
+        if not self._is_possibly_soopy(message):
             return
 
         # this can be safely echoed back as this method is only ever called once we've done some
@@ -249,6 +260,7 @@ class Bridge(commands.Cog):
             await ctx.send(f"**Users currently online:** {', '.join(users.keys())}")
 
     @commands.hybrid_command()
+    @app_commands.describe(username="Your IGN")
     @app_commands.guilds(discord.Object(id=int(os.environ["BRIDGE_GUILD"])))
     async def link(self, ctx: commands.Context, username: str):
         """Link your Minecraft account"""
@@ -268,7 +280,7 @@ class Bridge(commands.Cog):
             async with session.get(f"https://playerdb.co/api/player/minecraft/{username}") as resp:
                 data = await resp.json()
         if not data or not data.get("success") or "data" not in data:
-            await ctx.send("Can't verify your username!")
+            await ctx.send("That username doesn't exist!")
             return
         await user.set({"linked_account": data["data"]["player"]["username"]})
         await ctx.send(f"Updated your IGN to `{user.linked_account}`")
