@@ -24,6 +24,11 @@ CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
 FORMAT_CODE = re.compile(r"§[0-9A-FK-ORZ]", re.IGNORECASE)
 USERNAME_PATTERN = re.compile(r"[a-z0-9_]{3,16}", re.IGNORECASE)
 
+# forcefully map ""smart"" quotes to their ascii counterparts because minecraft 1.8.9 is
+# an ancient fucking version that has no right to still be relevant in any capacity
+# https://stackoverflow.com/a/41516221
+QUOTE_SMART_UNQUOTE_QUOTES = dict([(ord(x), ord(y)) for x, y in zip("‘’´“”–", "'''\"\"-")])
+
 
 def strip_non_ascii(string):
     return "".join(c for c in string if 0 < ord(c) < 127)
@@ -86,6 +91,7 @@ class Bridge(commands.Cog):
             return
 
         content = message.content.replace("\n", " ")
+        content = content.translate(QUOTE_SMART_UNQUOTE_QUOTES)
         content = EMOJI.sub(r"\1", content)
         content = self.sub_mentions(content)
         # 1.8.9 is 10 fucking years old and has no concept of any non-ASCII characters in its
