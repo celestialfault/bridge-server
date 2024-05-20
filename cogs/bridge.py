@@ -42,7 +42,7 @@ class Bridge(commands.Cog):
         self.sent: set[str] = set()
         self.backoff = ExponentialBackoff()
         self.backoff._max = 5
-        self.soopy_session = aiohttp.ClientSession()
+        self.soopy_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
 
     async def cog_unload(self) -> None:
         self.ws_handler.cancel()
@@ -222,6 +222,9 @@ class Bridge(commands.Cog):
             uri = f"https://soopy.dev/api/guildBot/runCommand?user={author}&cmd={command}"
             async with self.soopy_session.get(uri) as resp:
                 data = await resp.json()
+        except aiohttp.ClientTimeout:
+            await self._send_system("§7[SOOPY V2] Timed out waiting for a response")
+            return
         except aiohttp.ClientError as e:
             log.warning("Soopy guild bot API returned an error", exc_info=e)
             data = None
