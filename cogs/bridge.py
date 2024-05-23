@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import urllib.parse
+from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
@@ -24,14 +25,26 @@ CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
 FORMAT_CODE = re.compile(r"§[0-9A-FK-ORZ]", re.IGNORECASE)
 USERNAME_PATTERN = re.compile(r"[a-z0-9_]{3,16}", re.IGNORECASE)
 
-# forcefully map ""smart"" quotes to their ascii counterparts because minecraft 1.8.9 is
-# an ancient fucking version that has no right to still be relevant in any capacity
+# smart quotes were a mistake
 # https://stackoverflow.com/a/41516221
 QUOTE_SMART_UNQUOTE_QUOTES = dict([(ord(x), ord(y)) for x, y in zip("‘’´“”–", "'''\"\"-")])
+ALLOWED_UNICODE = set()
 
 
-def strip_non_ascii(string):
-    return "".join(c for c in string if 0 < ord(c) < 127)
+def load_allowed_unicode():
+    ALLOWED_UNICODE.clear()
+    with open(Path(__file__).parent.parent / "allowed_unicode.txt") as f:
+        for line in f.readlines():
+            line = line.replace("\n", "")
+            if line.startswith('#') or not line:
+                continue
+            ALLOWED_UNICODE.update(line)
+
+
+def limit_character_set(string):
+    """1.8.9 is an absolutely ancient version and has no concept of a significant amount of
+    unicode characters that exist, so just strip out characters it doesn't recognize"""
+    return "".join(c for c in string if 0 < ord(c) < 127 or c in ALLOWED_UNICODE)
 
 
 class Bridge(commands.Cog):
@@ -96,7 +109,7 @@ class Bridge(commands.Cog):
         content = self.sub_mentions(content)
         # 1.8.9 is 10 fucking years old and has no concept of any non-ASCII characters in its
         # default font rendering, so just enforce ASCII to dodge the rendering issues entirely
-        content = strip_non_ascii(content)
+        content = limit_character_set(content)
 
         if not content:
             return
@@ -109,9 +122,9 @@ class Bridge(commands.Cog):
             content = content[:256]
 
         author = (
-            (user and user.linked_account)
-            or strip_non_ascii(message.author.display_name)
-            or str(message.author)
+                (user and user.linked_account)
+                or limit_character_set(message.author.display_name)
+                or str(message.author)
         )
         replying_to = message.reference.cached_message if message.reference else None
         if replying_to and (replying_to.author.id != self.bot.user.id or replying_to.content):
@@ -122,9 +135,9 @@ class Bridge(commands.Cog):
             else:
                 referenced_user = await User.find_one({"user_id": reply_author.id})
                 author += (
-                    (referenced_user and referenced_user.linked_account)
-                    or strip_non_ascii(reply_author.display_name)
-                    or str(reply_author)
+                        (referenced_user and referenced_user.linked_account)
+                        or limit_character_set(reply_author.display_name)
+                        or str(reply_author)
                 )
 
         nonce = uuid4()
@@ -296,6 +309,9 @@ class Bridge(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    # yeah this is a blocking method in an async method but whatever, its a small text file,
+    # it shouldn't be that huge an issue for how often this is called.
+    load_allowed_unicode()
     cog = Bridge(bot)
     await cog.init_ws()
     cog.ws_handler.start()
