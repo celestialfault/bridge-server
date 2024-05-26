@@ -36,7 +36,7 @@ def load_allowed_unicode():
     with open(Path(__file__).parent.parent / "allowed_unicode.txt") as f:
         for line in f.readlines():
             line = line.replace("\n", "")
-            if line.startswith('#') or not line:
+            if line.startswith("#") or not line:
                 continue
             ALLOWED_UNICODE.update(line)
 
@@ -122,9 +122,9 @@ class Bridge(commands.Cog):
             content = content[:256]
 
         author = (
-                (user and user.linked_account)
-                or limit_character_set(message.author.display_name)
-                or str(message.author)
+            (user and user.linked_account)
+            or limit_character_set(message.author.display_name)
+            or str(message.author)
         )
         replying_to = message.reference.cached_message if message.reference else None
         if replying_to and (replying_to.author.id != self.bot.user.id or replying_to.content):
@@ -135,9 +135,9 @@ class Bridge(commands.Cog):
             else:
                 referenced_user = await User.find_one({"user_id": reply_author.id})
                 author += (
-                        (referenced_user and referenced_user.linked_account)
-                        or limit_character_set(reply_author.display_name)
-                        or str(reply_author)
+                    (referenced_user and referenced_user.linked_account)
+                    or limit_character_set(reply_author.display_name)
+                    or str(reply_author)
                 )
 
         nonce = uuid4()
@@ -152,17 +152,18 @@ class Bridge(commands.Cog):
             data["pings"] = False
 
         await self.ws.send(json.dumps(data))
-        if user and user.linked_account:
-            # noinspection PyAsyncCall
-            self.bot.loop.create_task(
-                self.soopy_command(message=content, author=user.linked_account)
-            )
-        elif self._is_possibly_soopy(content):
-            await message.reply(
-                "Use `/link` before using Soopy commands in Discord!",
-                delete_after=10,
-                mention_author=False,
-            )
+        if self._is_possibly_soopy(content):
+            if user and user.linked_account:
+                # noinspection PyAsyncCall
+                self.bot.loop.create_task(
+                    self.soopy_command(message=content, author=user.linked_account)
+                )
+            else:
+                await message.reply(
+                    "Use `/link` before using Soopy commands in Discord!",
+                    delete_after=10,
+                    mention_author=False,
+                )
 
     @tasks.loop()
     async def ws_handler(self):
@@ -186,9 +187,10 @@ class Bridge(commands.Cog):
                         f"**{data['author']}**: {message}",
                         allowed_mentions=discord.AllowedMentions.none(),
                     )
-                    # shut up pycharm
-                    # noinspection PyAsyncCall
-                    self.bot.loop.create_task(self.soopy_command(message, data["author"]))
+                    if self._is_possibly_soopy(message):
+                        # shut up pycharm
+                        # noinspection PyAsyncCall
+                        self.bot.loop.create_task(self.soopy_command(message, data["author"]))
         except websockets.ConnectionClosedError:
             delay = self.backoff.delay()
             print(f"Websocket connection closed, waiting {delay} to reconnect")
@@ -235,7 +237,7 @@ class Bridge(commands.Cog):
             uri = f"https://soopy.dev/api/guildBot/runCommand?user={author}&cmd={command}"
             async with self.soopy_session.get(uri) as resp:
                 data = await resp.json()
-        except aiohttp.ClientTimeout:
+        except asyncio.TimeoutError:
             await self._send_system("§7[SOOPY V2] Timed out waiting for a response")
             return
         except aiohttp.ClientError as e:
