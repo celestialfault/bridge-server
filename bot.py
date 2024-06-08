@@ -12,6 +12,7 @@ from db import init
 
 load_dotenv()
 intents = discord.Intents(messages=True, message_content=True, members=True, guilds=True)
+# noinspection PyTypeChecker
 bot = Bot(intents=intents, command_prefix=when_mentioned)
 log = logging.getLogger("bot")
 
@@ -19,13 +20,7 @@ log = logging.getLogger("bot")
 @bot.event
 async def on_ready():
     await init()
-    try:
-        # noinspection PyPackageRequirements
-        import jishaku
-    except ImportError:
-        pass
-    else:
-        await bot.load_extension("jishaku")
+    await bot.load_extension("cogs.jsk")
     await bot.load_extension("cogs.bridge")
     await bot.load_extension("cogs.tokens")
     await bot.load_extension("cogs.mod")

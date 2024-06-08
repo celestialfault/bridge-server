@@ -4,8 +4,10 @@ import logging
 import os
 import re
 import urllib.parse
+from collections import defaultdict
+from datetime import date
 from pathlib import Path
-from typing import cast
+from typing import Mapping, cast
 from uuid import uuid4
 
 import aiohttp
@@ -14,11 +16,15 @@ import websockets
 from discord import app_commands
 from discord.backoff import ExponentialBackoff
 from discord.ext import commands, tasks
+from pydantic import ValidationError
 
-from common import Message
+from antispam import AntiSpam
+from common import SPAM_INTERVALS, Message, lookup_username
 from db import User
 
 log = logging.getLogger("bot.bridge")
+WEBHOOK_LOCK = asyncio.Lock()
+DATA = Path(__file__).parent.parent / "data.json"
 EMOJI = re.compile(r"<a?(:[^:]+:)\d+>")
 USER_MENTION = re.compile(r"<@!?(\d+)>")
 CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
@@ -55,7 +61,10 @@ class Bridge(commands.Cog):
         self.sent: set[str] = set()
         self.backoff = ExponentialBackoff()
         self.backoff._max = 5
+        self.antispam: Mapping[int, AntiSpam] = defaultdict(lambda: AntiSpam(SPAM_INTERVALS))
         self.soopy_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
+        self._webhook: discord.Webhook | None = None
+        self.bot.loop.create_task(self.get_webhook())
 
     async def cog_unload(self) -> None:
         self.ws_handler.cancel()
@@ -67,18 +76,73 @@ class Bridge(commands.Cog):
             f"ws://localhost:{os.environ['BRIDGE_PORT']}/bot/{os.environ['BOT_KEY']}"
         )
 
-    def sub_mentions(self, message: str) -> str:
-        for mention in USER_MENTION.finditer(message):
-            user_id = int(mention.group(1))
-            user = self.channel.guild.get_member(user_id)
-            if user:
-                message = message.replace(mention.group(0), f"@{user.display_name}")
+    async def get_webhook(self) -> discord.Webhook:
+        await self.bot.wait_until_ready()
+        if self._webhook is not None:
+            # Avoid locking if we don't need to
+            return self._webhook
+
+        async with WEBHOOK_LOCK:
+            if self._webhook is not None:
+                # Handle the case where multiple calls were made to this within a short time frame,
+                # and we did end up locking
+                return self._webhook
+
+            channel = self.bot.get_channel(int(os.environ["BRIDGE_CHANNEL"]))
+            if channel is None:
+                raise RuntimeError("cant find bridge channel")
+
+            webhook_id: int | None = None
+            if DATA.exists():
+                with open(DATA) as f:
+                    webhook_id = cast(dict, json.load(f)).get("webhook", None)
+
+            if webhook_id is not None:
+                try:
+                    self._webhook = await self.bot.fetch_webhook(webhook_id)
+                    log.info("Using existing webhook with id %s", self._webhook.id)
+                    return self._webhook
+                except discord.NotFound:
+                    log.warning("Can't find webhook, creating new one")
+
+            self._webhook = webhook = await channel.create_webhook(name="Bridge")
+            log.info("Created webhook with id %s", webhook.id)
+            with open(DATA, mode="w") as f:
+                json.dump({"webhook": webhook.id}, f)
+            return webhook
+
+    async def sub_mentions(self, message: str) -> str:
+        mentions = [*USER_MENTION.finditer(message)]
+        user_ids = {int(x.group(1)) for x in mentions}
+        linked_users = (
+            {
+                x.user_id: x.linked_account
+                async for x in User.find_many({"user_id": {"$in": [*user_ids]}})
+                if x and x.linked_account
+            }
+            if user_ids
+            else {}
+        )
+
+        for mention, uid in {str(x.group(0)): int(x.group(1)) for x in mentions}.items():
+            if uid in linked_users:
+                message = message.replace(mention, f"@{linked_users[uid]}")
+            else:
+                user = self.channel.guild.get_member(uid)
+                if user:
+                    message = message.replace(
+                        mention, f"@{limit_character_set(user.display_name) or str(user)}"
+                    )
+                else:
+                    message = message.replace(mention, "@unknown-user")
 
         for mention in CHANNEL_MENTION.finditer(message):
             channel_id = int(mention.group(1))
             channel = self.channel.guild.get_channel(channel_id)
             if channel:
-                message = message.replace(mention.group(0), f"#{channel}")
+                message = message.replace(mention.group(0), f"#{limit_character_set(str(channel))}")
+            else:
+                message = message.replace(mention.group(0), "#unknown-channel")
 
         return message
 
@@ -103,10 +167,17 @@ class Bridge(commands.Cog):
                 await Mod.remove_permissions(message.channel, message.author)
             return
 
+        antispam = self.antispam[message.author.id]
+        if antispam.spammy:
+            await message.reply("Slow down there!", mention_author=True, delete_after=3)
+            if message.channel.permissions_for(message.guild.me).manage_messages:
+                await message.delete(delay=0.5)
+            return
+
         content = message.content.replace("\n", " ")
         content = content.translate(QUOTE_SMART_UNQUOTE_QUOTES)
         content = EMOJI.sub(r"\1", content)
-        content = self.sub_mentions(content)
+        content = await self.sub_mentions(content)
         # 1.8.9 is 10 fucking years old and has no concept of any non-ASCII characters in its
         # default font rendering, so just enforce ASCII to dodge the rendering issues entirely
         content = limit_character_set(content)
@@ -117,7 +188,7 @@ class Bridge(commands.Cog):
             await message.reply(
                 "Message was truncated to be under 256 characters long",
                 allowed_mentions=discord.AllowedMentions.none(),
-                delete_after=5,
+                delete_after=10,
             )
             content = content[:256]
 
@@ -127,26 +198,41 @@ class Bridge(commands.Cog):
             or str(message.author)
         )
         replying_to = message.reference.cached_message if message.reference else None
-        if replying_to and (replying_to.author.id != self.bot.user.id or replying_to.content):
+        # :ohno:
+        if replying_to:
             author += ", replying to "
-            reply_author = message.reference.cached_message.author
-            if reply_author.id == self.bot.user.id:
-                author += message.reference.cached_message.content.split("**")[1]
+            reply_author = replying_to.author
+            if (
+                reply_author.id == self.bot.user.id
+                and replying_to.content
+                and replying_to.content.startswith("**")
+            ):
+                author += replying_to.content.split("**")[1]
+            elif reply_author.discriminator == "0000":
+                author += reply_author.display_name
             else:
-                referenced_user = await User.find_one({"user_id": reply_author.id})
+                try:
+                    referenced_user = (
+                        await User.find_one({"user_id": reply_author.id})
+                        if not reply_author.bot
+                        else None
+                    )
+                except ValidationError:
+                    referenced_user = None
                 author += (
                     (referenced_user and referenced_user.linked_account)
                     or limit_character_set(reply_author.display_name)
                     or str(reply_author)
                 )
 
-        nonce = uuid4()
-        self.sent.add(str(nonce))
+        nonce = str(uuid4())
+        antispam.stamp()
+        self.sent.add(nonce)
 
         data = {
             "author": f"[DISCORD] {author}",
             "message": content,
-            "nonce": str(nonce),
+            "nonce": nonce,
         }
         if message.flags.suppress_notifications:
             data["pings"] = False
@@ -177,25 +263,48 @@ class Bridge(commands.Cog):
 
                 message = data["message"]
                 message = FORMAT_CODE.sub("", message)
-
-                if data.get("system", False):
-                    await self.channel.send(
-                        embed=discord.Embed(description=message, colour=discord.Colour.orange())
-                    )
-                else:
-                    await self.channel.send(
-                        f"**{data['author']}**: {message}",
-                        allowed_mentions=discord.AllowedMentions.none(),
-                    )
-                    if self._is_possibly_soopy(message):
-                        # shut up pycharm
-                        # noinspection PyAsyncCall
-                        self.bot.loop.create_task(self.soopy_command(message, data["author"]))
+                # this could hold up the message queue once per person for ~4 seconds every
+                # 6 hours or so; might be worth looking into shoving into a task or something
+                # in the future, but for now its probably fine.
+                try:
+                    await self._send_to_discord(data, message)
+                except discord.HTTPException as e:
+                    log.error("Failed to send message", exc_info=e)
         except websockets.ConnectionClosedError:
             delay = self.backoff.delay()
-            print(f"Websocket connection closed, waiting {delay} to reconnect")
+            log.warning(f"Websocket connection closed, waiting {delay} to reconnect")
             await asyncio.sleep(delay)
             await self.init_ws()
+
+    async def _send_to_discord(self, data: Message, message: str):
+        if data.get("system", False):
+            await self.channel.send(
+                embed=discord.Embed(description=message, colour=discord.Colour.orange())
+            )
+            return
+
+        avatar: str | None = None
+        if USERNAME_PATTERN.fullmatch(data["author"]):
+            user_data = await lookup_username(data["author"], timeout=4)
+            if user_data:
+                # discord has some incredibly wacky caching which makes virtually no sense
+                # in what it caches or for how long, so just opt to add a query string parameter
+                # to forcefully make discord disregard whatever cache it might have once a day
+                discord_cache_bust = date.today().strftime("%y%m%d")
+                avatar = f"https://crafthead.net/helm/{user_data['id']}?_={discord_cache_bust}"
+
+        webhook = await self.get_webhook()
+        await webhook.send(
+            content=message,
+            username=data["author"],
+            avatar_url=avatar,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+        if self._is_possibly_soopy(message):
+            # shut up pycharm
+            # noinspection PyAsyncCall
+            self.bot.loop.create_task(self.soopy_command(message, data["author"]))
 
     async def _send_system(self, message: str):
         await self.ws.send(
@@ -294,19 +403,18 @@ class Bridge(commands.Cog):
         user = await User.find_one({"user_id": ctx.author.id})
         if not user:
             user = User(user_id=ctx.author.id, key=str(uuid4()))
+            # noinspection PyArgumentList
             await user.insert()
         if user.banned:
             await ctx.send("You are currently banned from using the bridge!", ephemeral=True)
             return
 
         await ctx.defer()
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"https://playerdb.co/api/player/minecraft/{username}") as resp:
-                data = await resp.json()
-        if not data or not data.get("success") or "data" not in data:
+        data = await lookup_username(username)
+        if not data:
             await ctx.send("That username doesn't exist!")
             return
-        await user.set({"linked_account": data["data"]["player"]["username"]})
+        await user.set({"linked_account": data["username"]})
         await ctx.send(f"Updated your IGN to `{user.linked_account}`")
 
 

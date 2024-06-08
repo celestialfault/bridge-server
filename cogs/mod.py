@@ -30,12 +30,11 @@ def bridge_admin():
 
 class Mod(commands.Cog):
     @staticmethod
-    async def remove_permissions(channel: discord.TextChannel, member: discord.User):
+    async def remove_permissions(channel: discord.TextChannel, member: discord.Member):
         if not channel.guild or not channel.permissions_for(channel.guild.me).manage_permissions:
             return
         await channel.set_permissions(
-            # dpy actually checks for abc.User, so passing a User-hinted parameter is fine.
-            cast(discord.Member, member),
+            member,
             send_messages=False,
             add_reactions=False,
             use_application_commands=False,
@@ -43,11 +42,11 @@ class Mod(commands.Cog):
         )
 
     @staticmethod
-    async def restore_permissions(channel: discord.TextChannel, member: discord.User):
+    async def restore_permissions(channel: discord.TextChannel, member: discord.Member):
         if not channel.guild or not channel.permissions_for(channel.guild.me).manage_permissions:
             return
         await channel.set_permissions(
-            cast(discord.Member, member),
+            member,
             send_messages=None,
             add_reactions=None,
             use_application_commands=None,
@@ -168,7 +167,8 @@ class Mod(commands.Cog):
                 allowed_mentions=discord.AllowedMentions.none(),
             )
             bridge_channel = ctx.bot.get_channel(int(os.environ["BRIDGE_CHANNEL"]))
-            await self.remove_permissions(bridge_channel, user)
+            if member := bridge_channel.guild.get_member(user.id):
+                await self.remove_permissions(bridge_channel, member)
         else:
             await ctx.send(
                 f"\N{WARNING SIGN}\N{VARIATION SELECTOR-16} {response.get('reason')}",
@@ -187,7 +187,9 @@ class Mod(commands.Cog):
                 f"\N{WHITE HEAVY CHECK MARK} {user.mention} has been unbanned.",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-            await self.restore_permissions(ctx.channel, user)
+            bridge_channel = ctx.bot.get_channel(int(os.environ["BRIDGE_CHANNEL"]))
+            if member := bridge_channel.guild.get_member(user.id):
+                await self.restore_permissions(bridge_channel, member)
         else:
             await ctx.send(
                 f"\N{WARNING SIGN}\N{VARIATION SELECTOR-16} {response.get('reason')}",
