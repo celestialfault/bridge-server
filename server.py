@@ -46,6 +46,7 @@ async def ban(request: ModRequest, bot_key: Annotated[str, Header()]):
     target = await User.find_one({"user_id": request.id})
     if not target:
         target = User(user_id=request.id, key=uuid())
+        # noinspection PyArgumentList
         await target.insert()
     if target and target.admin:
         return JSONResponse(
@@ -87,6 +88,7 @@ async def mute(request: MuteRequest, bot_key: Annotated[str, Header()]):
     target = await User.find_one({"user_id": request.id})
     if not target:
         target = User(user_id=request.id, key=uuid())
+        # noinspection PyArgumentList
         await target.insert()
     if target.admin and request.until:
         return JSONResponse(
@@ -161,7 +163,7 @@ async def websocket(
     connection = UserConnection(username, ws, user_data=user)
     await manager.connect(connection)
 
-    if api_version == 0:
+    if api_version == 0 and not os.getenv("DEBUG"):
         await connection.send_system(
             "You are using an outdated version of the mod! Update at"
             # yeah, versions as old as this won't have clickable links, but :shrug:

@@ -36,6 +36,10 @@ class UserConnection:
     # noinspection PyShadowingBuiltins
     async def handle_ws_request(self, type: str, data: dict):
         if type == "send":
+            message: str = data["data"]
+            if not message.replace(" ", ""):
+                return
+
             if self.is_muted():
                 duration = delta_to_str(self.user_data.muted_until - datetime.utcnow())
                 reason = self.user_data.mute_reason or "No reason specified"
