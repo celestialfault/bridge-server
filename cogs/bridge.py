@@ -287,11 +287,12 @@ class Bridge(commands.Cog):
         if USERNAME_PATTERN.fullmatch(data["author"]):
             user_data = await lookup_username(data["author"], timeout=4)
             if user_data:
-                # discord has some incredibly wacky caching which makes virtually no sense
-                # in what it caches or for how long, so just opt to add a query string parameter
-                # to forcefully make discord disregard whatever cache it might have once a day
+                # discord has some incredibly wacky caching which makes virtually no sense in what
+                # it caches or for how long, so just opt to add a query string parameter in an
+                # attempt to forcefully make discord disregard whatever cache it might have once
+                # per day.
                 discord_cache_bust = date.today().strftime("%y%m%d")
-                avatar = f"https://crafthead.net/helm/{user_data['id']}?_={discord_cache_bust}"
+                avatar = f"https://visage.surgeplay.com/face/256/{user_data['id']}?_={discord_cache_bust}"
 
         webhook = await self.get_webhook()
         await webhook.send(
