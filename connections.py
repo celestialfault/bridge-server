@@ -1,14 +1,17 @@
+import asyncio
+import logging
 from datetime import datetime
-from typing import Iterator, cast
+from typing import Iterator
 from uuid import uuid4
 
 from fastapi import WebSocket
 
 from antispam import AntiSpam
-from common import Message, delta_to_str, SPAM_INTERVALS
+from common import SPAM_INTERVALS, Message, delta_to_str
 from db import User
 
 __all__ = ("manager", "UserConnection")
+log = logging.getLogger("connections")
 
 
 class UserConnection:
@@ -18,6 +21,19 @@ class UserConnection:
         self.system = system
         self.user_data = user_data
         self.antispam = AntiSpam(SPAM_INTERVALS)
+        self.send_queue: asyncio.Queue[Message] = asyncio.Queue()
+        # you are wrong pycharm, now be quiet
+        # noinspection PyUnreachableCode
+        self.queue_dispatcher = asyncio.get_event_loop().create_task(self._dispatch_queue())
+
+    async def _dispatch_queue(self) -> None:
+        while True:
+            try:
+                await self.send_json(await self.send_queue.get())
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                log.error("Failed to send queued message", exc_info=e)
 
     def is_muted(self) -> bool:
         return self.user_data and self.user_data.is_muted
@@ -51,7 +67,7 @@ class UserConnection:
                 return
             self.antispam.stamp()
 
-            await self._broadcast(self.user, str(data["data"]), nonce=str(data.get("nonce")))
+            await self._broadcast(self.user, str(data["data"]), nonce=data.get("nonce"))
 
         elif type == "request_online":
             connected = {x.user for x in manager.active_connections if not x.system}
@@ -59,15 +75,8 @@ class UserConnection:
 
     @staticmethod
     async def _broadcast(user: str, message: str, *, nonce: str = None):
-        # noinspection PyTypeChecker
-        await manager.broadcast(
-            {
-                "author": user,
-                "message": message,
-                # shut up pycharm
-                "nonce": cast(str, nonce or str(uuid4())),
-            }
-        )
+        # noinspection PyArgumentList
+        await manager.broadcast(Message(author=user, message=message, nonce=str(nonce or uuid4())))
 
 
 class ConnectionManager:
@@ -80,10 +89,11 @@ class ConnectionManager:
 
     def disconnect(self, user: UserConnection):
         self.active_connections.remove(user)
+        user.queue_dispatcher.cancel()
 
     async def broadcast(self, message: Message):
         for user in self.active_connections:
-            await user.send_json(message)
+            user.send_queue.put_nowait(message)
 
     def all_from(self, user: User) -> Iterator[UserConnection]:
         for connection in self.active_connections:
