@@ -294,6 +294,11 @@ class Bridge(commands.Cog):
                 discord_cache_bust = date.today().strftime("%y%m%d")
                 avatar = f"https://visage.surgeplay.com/face/256/{user_data['id']}?_={discord_cache_bust}"
 
+        if message.startswith(" "):
+            # preserve spaces at the beginning of a message by adding a zwj to prevent discord
+            # from "helpfully" trimming the message
+            message = f"\N{ZERO WIDTH JOINER}{message}"
+
         webhook = await self.get_webhook()
         await webhook.send(
             content=message,
