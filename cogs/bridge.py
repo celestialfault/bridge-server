@@ -19,12 +19,12 @@ from discord.ext import commands, tasks
 from pydantic import ValidationError
 
 from antispam import AntiSpam
-from common import SPAM_INTERVALS, Message, lookup_username
+from common import SPAM_INTERVALS, Message, lookup_username, get_persistent_data, \
+    save_persistent_data
 from db import User
 
 log = logging.getLogger("bot.bridge")
 WEBHOOK_LOCK = asyncio.Lock()
-DATA = Path(__file__).parent.parent / "data.json"
 EMOJI = re.compile(r"<a?(:[^:]+:)\d+>")
 USER_MENTION = re.compile(r"<@!?(\d+)>")
 CHANNEL_MENTION = re.compile(r"<#?(\d+)>")
@@ -92,10 +92,7 @@ class Bridge(commands.Cog):
             if channel is None:
                 raise RuntimeError("cant find bridge channel")
 
-            webhook_id: int | None = None
-            if DATA.exists():
-                with open(DATA) as f:
-                    webhook_id = cast(dict, json.load(f)).get("webhook", None)
+            webhook_id: int | None = get_persistent_data().get("webhook")
 
             if webhook_id is not None:
                 try:
@@ -107,8 +104,9 @@ class Bridge(commands.Cog):
 
             self._webhook = webhook = await channel.create_webhook(name="Bridge")
             log.info("Created webhook with id %s", webhook.id)
-            with open(DATA, mode="w") as f:
-                json.dump({"webhook": webhook.id}, f)
+            get_persistent_data()["webhook"] = webhook.id
+            save_persistent_data()
+
             return webhook
 
     async def sub_mentions(self, message: str) -> str:
@@ -149,7 +147,8 @@ class Bridge(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if (
-            message.author.bot
+            not get_persistent_data().get("accept_messages", True)
+            or message.author.bot
             or message.content.startswith(self.bot.user.mention)
             or message.channel.id != self.channel.id
             or not message.content

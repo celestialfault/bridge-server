@@ -12,6 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from common import get_persistent_data, save_persistent_data
 from db import User
 from time_converter import TimeDelta
 
@@ -195,6 +196,20 @@ class Mod(commands.Cog):
                 f"\N{WARNING SIGN}\N{VARIATION SELECTOR-16} {response.get('reason')}",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
+
+    @bridge.command()
+    @bridge_admin()
+    async def toggle(self, ctx: commands.Context):
+        """Master bridge toggle, allows or disallows sending messages"""
+        await ctx.defer()
+        data = get_persistent_data()
+        data["accept_messages"] = not data.get("accept_messages", True)
+        save_persistent_data()
+        await self._post("reload-data", {})
+        await ctx.send(
+            f"\N{WHITE HEAVY CHECK MARK} The bridge will"
+            f" {'no longer' if not data['accept_messages'] else 'now'} accept sent messages."
+        )
 
 
 async def setup(bot):

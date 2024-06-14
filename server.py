@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect, WebSocketException, status
 from fastapi.responses import JSONResponse
 
-from common import ModRequest, MuteRequest, delta_to_str
+from common import ModRequest, MuteRequest, delta_to_str, load_persistent_data
 from connections import UserConnection, manager
 from db import User, init
 
@@ -34,6 +34,17 @@ async def get_user_from_key(key: str) -> User | None:
 
 def is_valid_bot_key(key: str) -> bool:
     return key is not None and key == os.environ["BOT_KEY"]
+
+
+@app.post("/reload-data")
+def reload_data(bot_key: Annotated[str, Header()]):
+    if not is_valid_bot_key(bot_key):
+        return JSONResponse(
+            status_code=403, content={"success": False, "reason": "Invalid bot key"}
+        )
+
+    load_persistent_data()
+    return {"success": True}
 
 
 @app.post("/ban")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import TypedDict, MutableMapping
@@ -9,6 +10,9 @@ import aiohttp
 from pydantic import BaseModel
 
 __all__ = (
+    "get_persistent_data",
+    "load_persistent_data",
+    "save_persistent_data",
     "delta_to_str",
     "lookup_username",
     "Message",
@@ -25,6 +29,23 @@ SPAM_INTERVALS: list[tuple[timedelta, int]] = [
     (timedelta(seconds=60), 40),
 ]
 USERNAME_CACHE: MutableMapping[str, tuple[PlayerData | None, datetime]] = {}
+__data = {}
+
+
+def get_persistent_data() -> PersistentData:
+    return __data
+
+
+def load_persistent_data() -> None:
+    global __data
+
+    with open("data.json") as f:
+        __data = json.load(f)
+
+
+def save_persistent_data() -> None:
+    with open("data.json", mode="w") as f:
+        json.dump(__data, f)
 
 
 def delta_to_str(delta: timedelta) -> str:
@@ -40,6 +61,11 @@ def delta_to_str(delta: timedelta) -> str:
             time_difference %= unit_seconds
 
     return " ".join(time_str_parts) if time_str_parts else "0s"
+
+
+class PersistentData(TypedDict):
+    webhook: int | None
+    accept_messages: bool
 
 
 class Message(TypedDict):
@@ -87,3 +113,6 @@ async def lookup_username(username_or_uuid: str, *, timeout: int = 10) -> Player
         USERNAME_CACHE[username_or_uuid] = (data["data"]["player"], datetime.utcnow())
 
     return USERNAME_CACHE[username_or_uuid][0]
+
+
+load_persistent_data()

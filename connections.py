@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import WebSocket
 
 from antispam import AntiSpam
-from common import SPAM_INTERVALS, Message, delta_to_str
+from common import SPAM_INTERVALS, Message, delta_to_str, get_persistent_data
 from db import User
 
 __all__ = ("manager", "UserConnection")
@@ -41,7 +41,7 @@ class UserConnection:
     async def disconnect(self, code: int = 1000, reason: str | None = None):
         await self.ws.close(code=code, reason=reason)
 
-    async def send_system(self, message: str, *, author: str = ""):
+    async def send_system(self, message: str, *, author: str = "System"):
         await self.send_json(
             {"system": True, "author": author, "message": message, "nonce": str(uuid4())}
         )
@@ -54,6 +54,10 @@ class UserConnection:
         if type == "send":
             message: str = data["data"]
             if not message.replace(" ", ""):
+                return
+
+            if not get_persistent_data().get("accept_messages", True) and not self.user_data.admin:
+                await self.send_system(f"§cThe bridge is not currently accepting messages")
                 return
 
             if self.is_muted():
