@@ -199,16 +199,16 @@ class Mod(commands.Cog):
 
     @bridge.command()
     @bridge_admin()
-    async def toggle(self, ctx: commands.Context):
-        """Master bridge toggle, allows or disallows sending messages"""
+    async def muteall(self, ctx: commands.Context):
+        """Prevent all non-admin users from sending messages in-game"""
         await ctx.defer()
         data = get_persistent_data()
         data["accept_messages"] = not data.get("accept_messages", True)
         save_persistent_data()
         await self._post("reload-data", {})
         await ctx.send(
-            f"\N{WHITE HEAVY CHECK MARK} The bridge will"
-            f" {'no longer' if not data['accept_messages'] else 'now'} accept sent messages."
+            f"\N{WHITE HEAVY CHECK MARK} The bridge is"
+            f" {'no longer' if not data['accept_messages'] else 'now'} muted."
         )
 
 

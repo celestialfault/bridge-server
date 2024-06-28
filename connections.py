@@ -57,7 +57,7 @@ class UserConnection:
                 return
 
             if not get_persistent_data().get("accept_messages", True) and not self.user_data.admin:
-                await self.send_system(f"§cThe bridge is not currently accepting messages")
+                await self.send_system(f"§cThe bridge is currently muted.")
                 return
 
             if self.is_muted():
