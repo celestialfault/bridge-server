@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 from beanie import Document, init_beanie
@@ -20,7 +21,5 @@ class User(Document):
 
 
 async def init():
-    await init_beanie(
-        database=AsyncIOMotorClient("mongodb://localhost:27017")["swsh-bridge"],
-        document_models=[User],
-    )
+    host = os.environ.get("MONGO_HOST", "mongodb://localhost:27017")
+    await init_beanie(database=AsyncIOMotorClient(host)["swsh-bridge"], document_models=[User])
