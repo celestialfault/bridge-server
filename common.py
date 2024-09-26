@@ -94,7 +94,7 @@ class PlayerData(TypedDict):
 async def lookup_username(username_or_uuid: str, *, timeout: int = 10) -> PlayerData | None:
     username_or_uuid = username_or_uuid.casefold()
     if username_or_uuid in USERNAME_CACHE and (
-        USERNAME_CACHE[username_or_uuid][1] < datetime.utcnow() + timedelta(hours=6)
+        USERNAME_CACHE[username_or_uuid][1] > datetime.utcnow() - timedelta(hours=6)
     ):
         return USERNAME_CACHE[username_or_uuid][0]
 
